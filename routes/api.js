@@ -3,10 +3,12 @@ require('dotenv').config();
 const uri = process.env.DB;
 const {MongoClient} = require('mongodb');
 const client = new MongoClient(uri, {useUnifiedTopology: true});
+const ObjectId = require('mongodb').ObjectId;
+let boardName;
 
+module.exports = async function (app) {
 
-module.exports = function (app) {
-
+  // Main DB Handler
   async function dbMain(fun) {
     try {
       await client.connect()
@@ -27,6 +29,7 @@ module.exports = function (app) {
     }
   }
 
+  // DB Insert or Update Controller
   async function newThreadPost(coll, info) {
     // find board
     const found = await getThreads(coll, info);
@@ -42,37 +45,34 @@ module.exports = function (app) {
     
   }
 
+  // DB Search Controller 
   async function getThreads(coll, info) {
     return await coll.findOne({board: info.board});
   }
   
+  // Main Routing
   app.route('/api/threads/:board')
-    .post(function(req, res) {
+
+    .post(async function(req, res) {
       console.log('threads post');
-      //console.log('the request obj -------> ', req);
-      console.log(req.headers.referer, req.headers.origin);
-      let boardName = req.params.board;
-      console.log('the body ---->', req.body);
+      
       if (req.headers.referer == (req.headers.origin + '/')) {
         console.log('build a board');
 
-        dbMain( ['threadPost', {board: req.body.board, post: [{text: req.body.text, pass: req.body.delete_password}]}] );
+        boardName = req.params.board;
+        await  dbMain( ['threadPost', {board: boardName, post: [ {_id: new ObjectId(), text: req.body.text, pass: req.body.delete_password, replies: [], replycount: 0, created_on: new Date()} ]}] );
         res.redirect(`/b/${boardName}`);
+
       } else {
         console.log('update board');
-        console.log(req.headers.host);
         let pattern = req.headers.host + '/b/';
         let regex = new RegExp(`${pattern}(.*)`);
-        console.log('the pattern ----> ', pattern);
-        console.log('the regex ----> ', regex);
-        console.log('the referer ---->', req.headers.referer);
+
         boardName = (req.headers.referer).match(regex)[1];
-        console.log('the board name ----> ', boardName);
-        console.log('the wrong board name --> ', req.params.board);
+        await dbMain( ['threadPost', {board: boardName, post: [ {_id: new ObjectId(), text: req.body.text, pass: req.body.delete_password, replies: [], replycount: 0, created_on: new Date()} ]}] );
         res.redirect(`/b/${boardName}`);
+
       }
-      
-      
     })
 
     .put(function(req, res) {
@@ -83,17 +83,16 @@ module.exports = function (app) {
       console.log('threads delete');
     })
 
-    .get(function(req, res) {
+    .get(async function(req, res) {
       console.log('threads get');
-      //console.log('req ->>>> ', req);
-      console.log('wrong board name ----> ', req.params.board);
       let pattern = req.headers.host + '/b/';
       let regex = new RegExp(`${pattern}(.*)`);
-      let boardName = (req.headers.referer).match(regex)[1];
-      console.log('the board name ---> ', boardName);
-      let data = dbMain(['threadGet', {board: boardName}]);
+      
+      boardName = (req.headers.referer).match(regex)[1];
+      let data = await dbMain(['threadGet', {board: boardName}]);
       console.log('the data retrieved threadGet -----> ', data);
-      res.json(data);
+      res.json(data.post);
+
     });
   
     
@@ -112,8 +111,6 @@ module.exports = function (app) {
 
   .get(function(req, res) {
     console.log('replies get');
-    //console.log('req ->>>> ', req);
-    //console.log('board name ----> ', req.params.board);
   });
 
 };
