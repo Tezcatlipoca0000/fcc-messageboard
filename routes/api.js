@@ -21,6 +21,9 @@ module.exports = async function (app) {
       if (fun[0] == 'threadGet') {
         return await getThreads(coll, fun[1]);
       }
+      if (fun[0] == 'replyPost') {
+        await pushReply(coll, fun[1]);
+      }
 
     } catch (e) {
       console.log(e);
@@ -29,10 +32,10 @@ module.exports = async function (app) {
     }
   }
 
-  // DB Insert or Update Controller
+  // DB Insert or Update Thread Controller
   async function newThreadPost(coll, info) {
     // find board
-    const found = await getThreads(coll, info);
+    let found = await getThreads(coll, info);
     console.log('result of found ----> ', found);
     // update or insert
     if (found) {
@@ -45,9 +48,26 @@ module.exports = async function (app) {
     
   }
 
-  // DB Search Controller 
+  // DB Search Board Controller 
   async function getThreads(coll, info) {
     return await coll.findOne({board: info.board});
+  }
+
+  // DB Push Reply Controller
+  async function pushReply(coll, info) {
+    let found = await getThreads(coll, info);
+    console.log('result of found ----> ', found);
+
+    const reply = await coll.updateOne( {board: info.board}, {
+      $push: {replies: info.reply},
+      $inc: {replycount: 1}
+    } );
+    console.log('result of updateOne ---> ', reply);
+  }
+
+  // DB Search Thread Controller
+  async function getReplies(coll, info) {
+    return await coll.findOne( {board: info.board, post: [{_id: info.id}]} );
   }
   
   // Main Routing
@@ -85,10 +105,18 @@ module.exports = async function (app) {
 
     .get(async function(req, res) {
       console.log('threads get');
+      console.log('parameters of request ---> ', req.params.board);
       let pattern = req.headers.host + '/b/';
       let regex = new RegExp(`${pattern}(.*)`);
       
       boardName = (req.headers.referer).match(regex)[1];
+
+      // ERROR --> on "see full thread here" pending to separate board name from thread id
+
+      //console.log('the referer ---> ', req.headers.referer);
+      //console.log('the boardName ---> ', boardName);
+      //console.log('the req ---> ', req);
+
       let data = await dbMain(['threadGet', {board: boardName}]);
       console.log('the data retrieved threadGet -----> ', data);
       res.json(data.post);
@@ -97,8 +125,14 @@ module.exports = async function (app) {
   
     
   app.route('/api/replies/:board')
-  .post(function(req, res) {
+  .post(async function(req, res) {
     console.log('replies post');
+    //console.log('the req ----> ', req);
+    let pattern = req.headers.host + '/b/';
+    let regex = new RegExp(`${pattern}(.*)`);
+      
+    boardName = (req.headers.referer).match(regex)[1];
+    await dbMain( ['replyPost', {board: boardName, reply: req.body}] );
   })
 
   .put(function(req, res) {
